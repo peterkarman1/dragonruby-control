@@ -1,0 +1,188 @@
+#!/bin/bash
+# Host-side wrapper for controlling the DragonRuby container
+# Usage: ./dr-control <command> [args...]
+
+CONTAINER_NAME="dragonruby-game"
+
+# Check if container is running
+check_container() {
+    if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo "Error: Container '$CONTAINER_NAME' is not running"
+        echo "Start it with: docker-compose up -d dragonruby"
+        exit 1
+    fi
+}
+
+case "$1" in
+    start)
+        echo "Starting DragonRuby container..."
+        docker-compose up -d dragonruby
+        echo "Waiting for game to initialize..."
+        sleep 3
+        echo "Container started. Use './dr-control screenshot' to take screenshots."
+        ;;
+
+    start-vnc)
+        echo "Starting DragonRuby container with VNC..."
+        docker-compose --profile vnc up -d dragonruby-vnc
+        echo "VNC available at localhost:5900"
+        echo "On macOS: open vnc://localhost:5900"
+        ;;
+
+    stop)
+        echo "Stopping DragonRuby container..."
+        docker-compose down
+        ;;
+
+    restart)
+        echo "Restarting DragonRuby container..."
+        docker-compose down
+        docker-compose up -d dragonruby
+        sleep 3
+        echo "Container restarted."
+        ;;
+
+    logs)
+        docker-compose logs -f dragonruby
+        ;;
+
+    shell)
+        check_container
+        docker exec -it "$CONTAINER_NAME" /bin/bash
+        ;;
+
+    screenshot|ss)
+        check_container
+        docker exec "$CONTAINER_NAME" screenshot.sh "$2"
+        ;;
+
+    # Input shortcuts
+    up|down|left|right|space|enter|escape|tab)
+        check_container
+        docker exec "$CONTAINER_NAME" game-control.sh "$1"
+        ;;
+
+    # WASD shortcuts
+    w) check_container && docker exec "$CONTAINER_NAME" game-control.sh up ;;
+    a) check_container && docker exec "$CONTAINER_NAME" game-control.sh left ;;
+    s) check_container && docker exec "$CONTAINER_NAME" game-control.sh down ;;
+    d) check_container && docker exec "$CONTAINER_NAME" game-control.sh right ;;
+
+    key)
+        check_container
+        docker exec "$CONTAINER_NAME" send-input.sh key "$2"
+        ;;
+
+    type)
+        check_container
+        shift
+        docker exec "$CONTAINER_NAME" send-input.sh type "$@"
+        ;;
+
+    click)
+        check_container
+        docker exec "$CONTAINER_NAME" send-input.sh click "$2" "$3"
+        ;;
+
+    move)
+        check_container
+        docker exec "$CONTAINER_NAME" send-input.sh mousemove "$2" "$3"
+        ;;
+
+    wait)
+        check_container
+        docker exec "$CONTAINER_NAME" send-input.sh delay "$2"
+        ;;
+
+    # Run a sequence of commands
+    run)
+        check_container
+        if [ -f "$2" ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+                [[ "$line" =~ ^#.*$ ]] && continue
+                [[ -z "$line" ]] && continue
+                echo "> $line"
+                $0 $line
+            done < "$2"
+        else
+            echo "File not found: $2"
+            exit 1
+        fi
+        ;;
+
+    # Combo command - take action and screenshot
+    do)
+        check_container
+        shift
+        for cmd in "$@"; do
+            echo "> $cmd"
+            $0 "$cmd"
+        done
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        docker exec "$CONTAINER_NAME" screenshot.sh "action_${TIMESTAMP}.png"
+        ;;
+
+    build)
+        echo "Building Docker image..."
+        docker-compose build
+        ;;
+
+    test)
+        echo "Running unit tests..."
+        TEST_FILE="${2:-tests/run_tests.rb}"
+        docker run --rm \
+            -v "$(pwd)/mygame:/home/druser/game/mygame" \
+            poke-td-roguelike-dragonruby:latest \
+            /home/druser/game/dragonruby /home/druser/game/mygame --test "$TEST_FILE" --no-tick
+        ;;
+
+    help|--help|-h|"")
+        echo "DragonRuby Docker Control"
+        echo "========================="
+        echo ""
+        echo "Usage: ./dr-control <command> [args...]"
+        echo ""
+        echo "Container Management:"
+        echo "  start             Start the container"
+        echo "  start-vnc         Start with VNC (view at localhost:5900)"
+        echo "  stop              Stop the container"
+        echo "  restart           Restart the container"
+        echo "  logs              View container logs"
+        echo "  shell             Open shell in container"
+        echo "  build             Build/rebuild the Docker image"
+        echo ""
+        echo "Screenshots:"
+        echo "  screenshot [name] Take a screenshot"
+        echo "  ss [name]         Alias for screenshot"
+        echo ""
+        echo "Input:"
+        echo "  up/down/left/right Arrow keys"
+        echo "  w/a/s/d            WASD aliases"
+        echo "  space              Space bar"
+        echo "  enter              Enter key"
+        echo "  escape             Escape key"
+        echo "  tab                Tab key"
+        echo "  key <name>         Any key by name"
+        echo "  type <text>        Type text"
+        echo "  click <x> <y>      Mouse click"
+        echo "  move <x> <y>       Move mouse"
+        echo "  wait <ms>          Wait milliseconds"
+        echo ""
+        echo "Advanced:"
+        echo "  run <file>         Run commands from file"
+        echo "  do <cmds...>       Run commands and screenshot"
+        echo ""
+        echo "Examples:"
+        echo "  ./dr-control start"
+        echo "  ./dr-control screenshot initial.png"
+        echo "  ./dr-control space"
+        echo "  ./dr-control do space wait 1000"
+        echo "  ./dr-control click 640 360"
+        ;;
+
+    *)
+        echo "Unknown command: $1"
+        echo "Use './dr-control help' for usage"
+        exit 1
+        ;;
+esac

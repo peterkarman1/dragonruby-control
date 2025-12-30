@@ -1,0 +1,43 @@
+services:
+  dragonruby:
+    build: .
+    container_name: dragonruby-game
+    volumes:
+      # Mount mygame for live editing - changes reflect immediately
+      - ./mygame:/home/druser/game/mygame:rw
+      # Screenshots output directory
+      - ./screenshots:/home/druser/screenshots:rw
+    environment:
+      - DISPLAY=:99
+      - SDL_VIDEODRIVER=x11
+      - SDL_AUDIODRIVER=dummy
+      - ENABLE_VNC=false
+    ports:
+      - "5900:5900"
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # VNC-enabled for real-time viewing
+  dragonruby-vnc:
+    build: .
+    container_name: dragonruby-game-vnc
+    profiles:
+      - vnc
+    volumes:
+      - ./mygame:/home/druser/game/mygame:rw
+      - ./screenshots:/home/druser/screenshots:rw
+    environment:
+      - DISPLAY=:99
+      - SDL_VIDEODRIVER=x11
+      - SDL_AUDIODRIVER=dummy
+      - ENABLE_VNC=true
+    ports:
+      - "5900:5900"
+    stdin_open: true
+    tty: true
