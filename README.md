@@ -96,6 +96,22 @@ Screenshots are saved to `./screenshots/` on your host.
 ./dr-control wait 1000          # Wait 1000ms
 ```
 
+### Game State Inspection (HTTP Eval)
+
+DragonRuby exposes a webserver on port 9001 that allows remote code execution and state inspection. This is extremely useful for AI-assisted debugging and game state analysis.
+
+```bash
+./dr-control get-state              # Get full game state as hash
+./dr-control get-state player       # Get specific state path (args.state.player)
+./dr-control get-state player.x     # Nested paths work too
+
+./dr-control eval '$gtk.args.state.score'           # Read a value
+./dr-control eval '$gtk.args.state.score = 100'     # Modify game state
+./dr-control eval '$gtk.args.state.player.hp += 50' # Increment values
+```
+
+**Note**: The eval endpoint requires the DragonRuby webserver to be enabled. This is configured automatically via `mygame/metadata/cvars.txt`.
+
 ### Sequences
 ```bash
 ./dr-control run sequence.txt   # Run commands from file
@@ -156,20 +172,22 @@ The game runs at 1280x720 resolution. Common UI positions:
 │  │  ┌─────────────────────────────────────┐  │  │
 │  │  │         DragonRuby Game             │  │  │
 │  │  │        (renders to display)         │  │  │
+│  │  │        (webserver on :9001)         │  │  │
 │  │  └─────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────┘  │
 │                       │                         │
-│          ┌────────────┼────────────┐            │
-│          │            │            │            │
-│          ▼            ▼            ▼            │
-│      xdotool      scrot       x11vnc           │
-│      (input)   (screenshot)  (viewer)          │
+│          ┌────────────┼────────────┬───────┐    │
+│          │            │            │       │    │
+│          ▼            ▼            ▼       ▼    │
+│      xdotool      scrot       x11vnc   HTTP    │
+│      (input)   (screenshot)  (viewer)  (eval)  │
 └─────────────────────────────────────────────────┘
-          │            │            │
-          ▼            ▼            ▼
-     send-input.sh  screenshot.sh  VNC:5900
-          │            │
-          └─────┬──────┘
+          │            │            │       │
+          ▼            ▼            ▼       ▼
+     send-input.sh  screenshot.sh  VNC   HTTP
+                                  :5900  :9001
+          │            │                   │
+          └─────┬──────┴───────────────────┘
                 ▼
            dr-control (host wrapper)
 ```
@@ -200,12 +218,30 @@ The container is designed for programmatic control:
 3. **Input**: Full keyboard and mouse support via xdotool
 4. **Deterministic**: No audio, consistent 1280x720 display
 5. **Scriptable**: All commands return exit codes
+6. **State Inspection**: Direct game state access via HTTP eval endpoint
+
+### Timing Considerations for LLM Integration
+
+When using this with an LLM assistant, there will be inherent delays between:
+- Your prompt to the LLM
+- The LLM's decision and action
+- HTTP requests and game responses
+
+For **real-time games**, consider:
+- Slowing down game speed or using a pause feature
+- Using turn-based or menu-driven interactions
+- Implementing a "thinking" pause in your game when AI is controlling
+
+For **static/turn-based games**, the HTTP eval endpoint works great as-is:
+- Query game state with `get-state`
+- Make decisions based on current state
+- Execute actions and verify results
 
 Example Python integration:
 
 ```python
 import subprocess
-import time
+import json
 
 def screenshot(name="screenshot.png"):
     result = subprocess.run(
@@ -223,12 +259,38 @@ def click(x, y):
 def wait(ms):
     subprocess.run(["./dr-control", "wait", str(ms)])
 
+def get_state(path=None):
+    """Get game state, optionally at a specific path."""
+    cmd = ["./dr-control", "get-state"]
+    if path:
+        cmd.append(path)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.stdout.strip()
+
+def eval_code(code):
+    """Execute Ruby code in the game context."""
+    result = subprocess.run(
+        ["./dr-control", "eval", code],
+        capture_output=True, text=True
+    )
+    return result.stdout.strip()
+
 # Example: Navigate menu and screenshot
 send_key("enter")
 wait(1000)
 click(640, 360)
 wait(500)
 screenshot("result.png")
+
+# Example: Inspect and modify game state
+player_state = get_state("player")
+print(f"Player state: {player_state}")
+
+current_score = eval_code("$gtk.args.state.score")
+print(f"Current score: {current_score}")
+
+# Modify game state
+eval_code("$gtk.args.state.player.hp = 100")
 ```
 
 ## Troubleshooting
@@ -261,3 +323,15 @@ docker info
 
 ### Apple Silicon (M1/M2/M3) Notes
 The container uses the ARM64 Linux DragonRuby binary from `.dragonruby/stubs/linux-arm64` for native performance on Apple Silicon Macs.
+
+### HTTP Eval Not Working
+If `get-state` or `eval` commands fail:
+- Verify the webserver is enabled: check `mygame/metadata/cvars.txt` exists with `webserver.enabled=true`
+- Check port 9001 is exposed: `docker port dragonruby-game`
+- Test connectivity: `curl http://localhost:9001/`
+- Check container logs for webserver startup messages: `./dr-control logs`
+
+### Eval Returns Empty or Unexpected Results
+- Ensure your Ruby code is valid
+- Complex objects may need `.to_s` or `.inspect` to display properly
+- Use `$gtk.args.state` to access game state (not just `args.state`)
