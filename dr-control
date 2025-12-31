@@ -3,6 +3,7 @@
 # Usage: ./dr-control <command> [args...]
 
 CONTAINER_NAME="dragonruby-game"
+DRAGONRUBY_HTTP_PORT="${DRAGONRUBY_HTTP_PORT:-9001}"
 
 # Check if container is running
 check_container() {
@@ -136,6 +137,48 @@ case "$1" in
             /home/druser/game/dragonruby /home/druser/game/mygame --test "$TEST_FILE" --no-tick
         ;;
 
+    # HTTP eval endpoint commands
+    eval)
+        check_container
+        if [ -z "$2" ]; then
+            echo "Usage: ./dr-control eval '<ruby_code>'"
+            echo "Example: ./dr-control eval '\$gtk.args.state.player.x'"
+            exit 1
+        fi
+        shift
+        CODE="$*"
+        # Use curl to POST to DragonRuby's eval endpoint
+        RESPONSE=$(curl -s -X POST "http://localhost:${DRAGONRUBY_HTTP_PORT}/dragon/eval/" \
+            -H "Content-Type: application/json" \
+            -d "{\"code\": \"$CODE\"}" 2>&1)
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to connect to DragonRuby webserver on port $DRAGONRUBY_HTTP_PORT"
+            echo "Make sure the game is running and webserver is enabled in mygame/metadata/cvars.txt"
+            exit 1
+        fi
+        echo "$RESPONSE"
+        ;;
+
+    get-state)
+        check_container
+        # Get the game state, optionally a specific path
+        STATE_PATH="${2:-}"
+        if [ -z "$STATE_PATH" ]; then
+            CODE="\$gtk.args.state.as_hash.to_s"
+        else
+            CODE="\$gtk.args.state.${STATE_PATH}.to_s"
+        fi
+        RESPONSE=$(curl -s -X POST "http://localhost:${DRAGONRUBY_HTTP_PORT}/dragon/eval/" \
+            -H "Content-Type: application/json" \
+            -d "{\"code\": \"$CODE\"}" 2>&1)
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to connect to DragonRuby webserver on port $DRAGONRUBY_HTTP_PORT"
+            echo "Make sure the game is running and webserver is enabled in mygame/metadata/cvars.txt"
+            exit 1
+        fi
+        echo "$RESPONSE"
+        ;;
+
     help|--help|-h|"")
         echo "DragonRuby Docker Control"
         echo "========================="
@@ -172,12 +215,19 @@ case "$1" in
         echo "  run <file>         Run commands from file"
         echo "  do <cmds...>       Run commands and screenshot"
         echo ""
+        echo "Game State (HTTP Eval):"
+        echo "  eval <code>        Execute Ruby code in game context"
+        echo "  get-state [path]   Get game state (optionally at path)"
+        echo ""
         echo "Examples:"
         echo "  ./dr-control start"
         echo "  ./dr-control screenshot initial.png"
         echo "  ./dr-control space"
         echo "  ./dr-control do space wait 1000"
         echo "  ./dr-control click 640 360"
+        echo "  ./dr-control get-state"
+        echo "  ./dr-control get-state player"
+        echo "  ./dr-control eval '\$gtk.args.state.score = 100'"
         ;;
 
     *)

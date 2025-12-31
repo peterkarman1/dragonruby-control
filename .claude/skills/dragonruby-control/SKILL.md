@@ -80,6 +80,31 @@ The screen resolution is 1280x720.
 ./dr-control wait 500           # Wait 0.5 seconds
 ```
 
+## Game State Inspection (HTTP Eval)
+
+DragonRuby exposes a webserver that allows direct inspection and modification of game state.
+
+```bash
+# Get full game state
+./dr-control get-state
+
+# Get specific state path
+./dr-control get-state player
+./dr-control get-state player.x
+./dr-control get-state enemies
+
+# Execute arbitrary Ruby code
+./dr-control eval '$gtk.args.state.score'
+./dr-control eval '$gtk.args.state.player.hp = 100'
+./dr-control eval '$gtk.args.state.debug_mode = true'
+```
+
+This is useful for:
+- Inspecting game state without screenshots
+- Modifying state for testing (e.g., setting player HP, score)
+- Debugging complex state issues
+- Automating game testing with assertions
+
 ## Screen Coordinates Reference
 
 - Resolution: 1280x720
@@ -139,4 +164,26 @@ No rebuild needed for code changes.
 # After fixing code, DragonRuby auto-reloads
 # Take screenshot to verify fix
 ./dr-control screenshot after_fix.png
+```
+
+## Example: Inspect Game State
+
+```bash
+# Start game and wait for initialization
+./dr-control start
+./dr-control wait 3000
+
+# Get the current game state
+./dr-control get-state
+
+# Check specific values
+./dr-control get-state player
+./dr-control eval '$gtk.args.state.tick_count'
+
+# Modify state for testing
+./dr-control eval '$gtk.args.state.player.hp = 999'
+./dr-control eval '$gtk.args.state.score = 50000'
+
+# Take screenshot to see changes
+./dr-control screenshot state_modified.png
 ```

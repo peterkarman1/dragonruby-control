@@ -1,0 +1,15 @@
+# DragonRuby webserver configuration for HTTP eval endpoint
+# This enables remote code execution and game state inspection
+
+# Enable the in-game webserver
+webserver.enabled=true
+
+# Port for the webserver (default: 9001)
+webserver.port=9001
+
+# Accept connections from sources other than localhost
+# Required for Docker container networking
+webserver.remote_clients=true
+
+# Optional: Hide HTTP server logs to reduce noise
+# log.filter_subsystems=HTTPServer

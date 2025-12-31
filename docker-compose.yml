@@ -14,6 +14,7 @@ services:
       - ENABLE_VNC=false
     ports:
       - "5900:5900"
+      - "9001:9001"  # DragonRuby webserver for HTTP eval
     stdin_open: true
     tty: true
     deploy:
@@ -39,5 +40,6 @@ services:
       - ENABLE_VNC=true
     ports:
       - "5900:5900"
+      - "9001:9001"  # DragonRuby webserver for HTTP eval
     stdin_open: true
     tty: true
