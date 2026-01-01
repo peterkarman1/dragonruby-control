@@ -136,6 +136,122 @@ docker exec dragonruby-game game-control.sh space
 docker exec dragonruby-game game-control.sh click 640 360
 ```
 
+## State Inspection (Eval API)
+
+DragonRuby includes an HTTP eval API for executing Ruby code in the running game. This enables AI assistants to query and modify game state programmatically.
+
+### Setup
+
+1. Enable the webserver in your game's `mygame/metadata/cvars.txt`:
+   ```
+   webserver.enabled=true
+   webserver.port=9001
+   webserver.remote_clients=true
+   ```
+
+2. The container already exposes port 9001 - no additional configuration needed.
+
+3. Rebuild if needed: `./dr-control build`
+
+### Basic Usage
+
+```bash
+# Query any game state
+./dr-control eval '$args.state'
+./dr-control eval '$args.state.score'
+./dr-control eval 'Kernel.tick_count'
+
+# Modify state
+./dr-control eval '$args.state.score = 1000'
+./dr-control eval '$args.state.player.hp = 100'
+
+# Call methods
+./dr-control eval '$args.state.enemies.count'
+./dr-control eval '$game.current_scene'
+```
+
+### Creating Test Helpers
+
+For complex games, create a helper module. See `examples/ai_test_helpers.rb` for a complete template.
+
+```ruby
+# mygame/app/ai_test_helpers.rb
+module AITestHelpers
+  class << self
+    # mRuby doesn't have to_json, so we provide one
+    def to_json(obj)
+      case obj
+      when Hash
+        pairs = obj.map { |k, v| "\"#{k}\":#{to_json(v)}" }
+        "{#{pairs.join(',')}}"
+      when Array then "[#{obj.map { |v| to_json(v) }.join(',')}]"
+      when String then "\"#{obj.gsub('"', '\\"')}\""
+      when Symbol then "\"#{obj}\""
+      when Numeric then obj.to_s
+      when TrueClass, FalseClass then obj.to_s
+      when NilClass then 'null'
+      else "\"#{obj}\""
+      end
+    end
+
+    def summary
+      {
+        tick: Kernel.tick_count,
+        score: $args.state.score,
+        player_hp: $args.state.player&.hp
+      }
+    end
+  end
+end
+```
+
+Then query via:
+```bash
+./dr-control eval 'AITestHelpers.to_json(AITestHelpers.summary)'
+```
+
+### State Logging
+
+For continuous state capture, see `examples/state_logger.rb`. Add to your game:
+
+```ruby
+# In your tick method:
+$state_logger&.update($args.state)
+```
+
+Control via:
+```bash
+./dr-control eval '$state_logger.start("session1.jsonl")'
+# ... play game ...
+./dr-control eval '$state_logger.stop'
+```
+
+Logs are saved to `mygame/logs/` as JSONL (one JSON object per line).
+
+### Extending dr-control
+
+Add game-specific commands to `dr-control`. See `examples/custom_commands.sh` for templates:
+
+```bash
+# Add after the 'eval)' case in dr-control:
+
+score)
+    check_container
+    docker exec "$CONTAINER_NAME" eval.sh '$args.state.score.to_s'
+    ;;
+
+set-score)
+    check_container
+    docker exec "$CONTAINER_NAME" eval.sh "\$args.state.score = ${2:-0}"
+    ;;
+```
+
+Then use:
+```bash
+./dr-control score
+./dr-control set-score 5000
+```
+
 ## Screen Coordinates
 
 The game runs at 1280x720 resolution. Common UI positions:
@@ -180,13 +296,16 @@ The game runs at 1280x720 resolution. Common UI positions:
 ├── Dockerfile              # Container image definition
 ├── docker-compose.yml      # Container orchestration
 ├── dr-control              # Host-side control script
-├── .dockerignore           # Build optimization
 ├── docker/
-│   ├── README.md           # This file
 │   ├── entrypoint.sh       # Container startup script
 │   ├── screenshot.sh       # Screenshot utility
 │   ├── send-input.sh       # Input utility
-│   └── game-control.sh     # High-level control utility
+│   ├── game-control.sh     # High-level control utility
+│   └── eval.sh             # Ruby eval API utility
+├── examples/
+│   ├── ai_test_helpers.rb  # Template for game state helpers
+│   ├── state_logger.rb     # Template for continuous logging
+│   └── custom_commands.sh  # Example dr-control extensions
 ├── screenshots/            # Screenshot output directory
 └── mygame/                 # Game code (live-mounted)
 ```

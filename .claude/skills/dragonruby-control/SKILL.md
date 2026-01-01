@@ -80,6 +80,31 @@ The screen resolution is 1280x720.
 ./dr-control wait 500           # Wait 0.5 seconds
 ```
 
+## State Inspection (Eval API)
+
+Execute Ruby code in the running game via DragonRuby's HTTP eval API.
+
+**Prerequisites:** Enable in `mygame/metadata/cvars.txt`:
+```
+webserver.enabled=true
+webserver.port=9001
+webserver.remote_clients=true
+```
+
+```bash
+# Query state
+./dr-control eval '$args.state'
+./dr-control eval '$args.state.score'
+./dr-control eval 'Kernel.tick_count'
+
+# Modify state
+./dr-control eval '$args.state.score = 1000'
+./dr-control eval '$args.state.player.hp = 100'
+
+# With test helpers (if implemented)
+./dr-control eval 'AITestHelpers.to_json(AITestHelpers.summary)'
+```
+
 ## Screen Coordinates Reference
 
 - Resolution: 1280x720

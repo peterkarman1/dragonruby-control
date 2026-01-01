@@ -58,7 +58,11 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker/screenshot.sh /usr/local/bin/screenshot.sh
 COPY docker/send-input.sh /usr/local/bin/send-input.sh
 COPY docker/game-control.sh /usr/local/bin/game-control.sh
+COPY docker/eval.sh /usr/local/bin/eval.sh
 RUN chmod +x /usr/local/bin/*.sh
+
+# Expose webserver port for state inspection via eval API
+EXPOSE 9001
 
 # Copy Linux DragonRuby runtime files (use ARM64 for Apple Silicon compatibility)
 COPY --chown=druser:druser dragonruby-linux-amd64/.dragonruby/stubs/linux-arm64 /home/druser/game/dragonruby

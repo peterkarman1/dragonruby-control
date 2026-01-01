@@ -127,6 +127,15 @@ case "$1" in
         docker-compose build
         ;;
 
+    # ==========================================
+    # State Inspection (Eval API)
+    # ==========================================
+
+    eval)
+        check_container
+        docker exec "$CONTAINER_NAME" eval.sh "$2"
+        ;;
+
     test)
         echo "Running unit tests..."
         TEST_FILE="${2:-tests/run_tests.rb}"
@@ -168,6 +177,9 @@ case "$1" in
         echo "  move <x> <y>       Move mouse"
         echo "  wait <ms>          Wait milliseconds"
         echo ""
+        echo "State Inspection:"
+        echo "  eval <code>        Execute Ruby code in running game"
+        echo ""
         echo "Advanced:"
         echo "  run <file>         Run commands from file"
         echo "  do <cmds...>       Run commands and screenshot"
@@ -178,6 +190,8 @@ case "$1" in
         echo "  ./dr-control space"
         echo "  ./dr-control do space wait 1000"
         echo "  ./dr-control click 640 360"
+        echo "  ./dr-control eval '\$args.state'"
+        echo "  ./dr-control eval 'Kernel.tick_count'"
         ;;
 
     *)
